@@ -19,6 +19,11 @@ std::string CountParametersMetric::Name() const { return kName; }
 
 MetricResult::ValueType CountParametersMetric::CalculateImpl(const function::Function &f) const {
     auto &function_ast = f.ast;
+
+    if (function_ast.empty()) {
+        throw std::runtime_error("CountParametersMetric: empty AST for function " + f.name);
+    }
+
     // 1. Находим начало блока параметров
     const std::string parameters_marker = "(parameters";
     size_t params_start = function_ast.find(parameters_marker);
