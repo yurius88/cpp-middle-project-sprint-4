@@ -24,6 +24,10 @@ MetricResult::ValueType CyclomaticComplexityMetric::CalculateImpl(const function
     // "(function_definition name: (identifier) ... (if_statement ...) (for_statement ...))"
     auto &function_ast = f.ast;
 
+    if (function_ast.empty()) {
+        throw std::runtime_error("CyclomaticComplexityMetric: empty AST for function " + f.name);
+    }
+
     // Список типов узлов AST, каждый из которых увеличивает цикломатическую сложность на 1.
     // Эти узлы соответствуют управляющим конструкциям языка Python:
     // - if / elif
@@ -34,36 +38,38 @@ MetricResult::ValueType CyclomaticComplexityMetric::CalculateImpl(const function
     // - тернарный оператор (conditional_expression)
     constexpr std::array<std::string_view, 9> complexity_nodes = {
         "if_statement",            // if
-        "elif_statement",          // elif
+        "elif_clause",             // elif
         "for_statement",           // for
         "while_statement",         // while
         "try_statement",           // try
         "finally_clause",          // finally
         "case_clause",             // case
-        "assert",                  // assert
+        "assert_statement",        // assert
         "conditional_expression",  // для тернарного оператора
     };
 
-    // === ВАШ КОД ДОЛЖЕН БЫТЬ ЗДЕСЬ ===
-    //
-    // Цель: подсчитать, сколько раз в строке `function_ast` встречаются
-    // любые из узлов из `complexity_nodes`.
-    //
-    // Важно:
-    // - Имена узлов уникальны и не являются подстроками других имён, поэтому
-    //   поиск подстроки (например, `"if_statement"`) безопасен.
-    // - Каждое вхождение узла = +1 к сложности.
-    // - В конце к общей сумме нужно прибавить 1 (базовая сложность функции без ветвлений).
-    //
-    // Пример:
-    // Если AST содержит "(if_statement ...) (for_statement ...) (if_statement ...)",
-    // то найдено 3 узла → сложность = 3 + 1 = 4.
-    //
-    // Подсказка:
-    // Можно пройтись по каждому `node_type` из `complexity_nodes` и подсчитать,
-    // сколько раз он встречается в `function_ast`, используя `std::string::find`
-    // в цикле (это допустимо, так как вы работаете со строковым представлением AST,
-    // а не с исходным кодом напрямую).
+    // Подсчитываем количество узлов, увеличивающих цикломатическую сложность
+    // используя std::ranges
+    auto count_occurrences = [&function_ast](std::string_view node_type) {
+        std::string search_pattern = "(" + std::string(node_type);
+        size_t count = 0;
+        size_t pos = 0;
 
+        while ((pos = function_ast.find(search_pattern, pos)) != std::string::npos) {
+            count++;
+            pos += search_pattern.length();
+        }
+
+        return count;
+    };
+
+    // Суммируем количество всех управляющих конструкций
+    auto total_complexity = rs::fold_left(
+        complexity_nodes | rv::transform(count_occurrences),
+        1,  // Базовая сложность функции
+        std::plus<>()
+    );
+
+    return static_cast<int>(total_complexity);
 }
 }  // namespace analyzer::metric::metric_impl

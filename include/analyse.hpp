@@ -40,11 +40,32 @@ namespace rs = std::ranges;
  */
 auto AnalyseFunctions(const std::vector<std::string> &files,
                       const analyzer::metric::MetricExtractor &metric_extractor) {
-    // здесь ваш код
+    // 1. Создаём объекты File для каждого файла
+    auto file_objects = files
+        | rv::transform([](const std::string& filename) {
+            return analyzer::file::File(filename);
+          });
+
+    // 2. Извлекаем функции из каждого файла и объединяем в один список
+    analyzer::function::FunctionExtractor extractor;
+    auto all_functions = file_objects
+        | rv::transform([&extractor](const auto& file) {
+            return extractor.Get(file);
+          })
+        | rv::join;
+
+    // 3. Для каждой функции вычисляем метрики и формируем пары (функция, метрики)
+    auto analysis_results = all_functions
+        | rv::transform([&metric_extractor](const auto& func) {
+            return std::make_pair(func, metric_extractor.Get(func));
+          })
+        | rs::to<std::vector>();
+
+    return analysis_results;
 }
 
 /**
- * 
+ *
  * @brief Группирует результаты анализа по классам.
  *
  * Эта функция:
@@ -62,7 +83,19 @@ auto AnalyseFunctions(const std::vector<std::string> &files,
  * действительно исчезают из результата.
  */
 auto SplitByClasses(const auto &analysis) {
-    // здесь ваш код
+    // 1. Фильтруем только методы классов (у которых есть class_name)
+    auto class_methods = analysis
+        | rv::filter([](const auto& elem) {
+            return elem.first.class_name.has_value();
+          });
+
+    // 2. Группируем по имени класса с помощью chunk_by
+    auto grouped_by_class = class_methods
+        | rv::chunk_by([](const auto& a, const auto& b) {
+            return a.first.class_name == b.first.class_name;
+          });
+
+    return grouped_by_class;
 }
 
 /**
@@ -74,7 +107,13 @@ auto SplitByClasses(const auto &analysis) {
  * - Использует `chunk_by`, поэтому **порядок функций в `analysis` должен быть по файлам**.
  */
 auto SplitByFiles(const auto &analysis) {
-    // здесь ваш код
+    // Группируем по имени файла с помощью chunk_by
+    auto grouped_by_file = analysis
+        | rv::chunk_by([](const auto& a, const auto& b) {
+            return a.first.filename == b.first.filename;
+          });
+
+    return grouped_by_file;
 }
 
 /**
@@ -87,7 +126,10 @@ auto SplitByFiles(const auto &analysis) {
  */
 void AccumulateFunctionAnalysis(const auto &analysis,
                                 const analyzer::metric_accumulator::MetricsAccumulator &accumulator) {
-    // здесь ваш код
+    // Проходим по каждому элементу анализа и передаём метрики в аккумулятор
+    rs::for_each(analysis, [&accumulator](const auto& elem) {
+        accumulator.AccumulateNextFunctionResults(elem.second);
+    });
 }
 
 }  // namespace analyzer
